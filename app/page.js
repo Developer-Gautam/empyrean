@@ -188,7 +188,7 @@ export default function Home() {
                 <FaUsers className="h-5 w-5 text-indigo-600" />
                 Students ({students.length})
               </h2>
-              <div className="flex gap-3 text-sm flex-wrap">
+              <div className="flex flex-wrap gap-3 text-sm justify-start sm:justify-end">
                 <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-3 py-1 rounded-lg">
                   <FaCheckCircle className="h-4 w-4" />
                   Present: {presentCount}
@@ -206,13 +206,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               {students.map((student) => (
                 <div
                   key={student.id}
-                  className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg hover:from-gray-100 hover:to-gray-200 transition-all border border-gray-200"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-2xl shadow-sm border border-gray-100"
                 >
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex items-center gap-3 w-full">
                     {student.status === 'present' ? (
                       <FaCheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                     ) : student.status === 'absent' ? (
@@ -224,10 +224,10 @@ export default function Home() {
                       {student.name}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     <button
                       onClick={() => setStudentStatus(student.id, 'present')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all shadow-md hover:shadow-lg ${
+                      className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all w-full sm:w-auto ${
                         student.status === 'present'
                           ? 'bg-green-600 text-white'
                           : 'bg-green-100 text-green-700 hover:bg-green-200'
@@ -238,7 +238,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => setStudentStatus(student.id, 'absent')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all shadow-md hover:shadow-lg ${
+                      className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm sm:text-base transition-all w-full sm:w-auto ${
                         student.status === 'absent'
                           ? 'bg-red-600 text-white'
                           : 'bg-red-100 text-red-700 hover:bg-red-200'
@@ -249,7 +249,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => removeStudent(student.id)}
-                      className="flex items-center gap-1 px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-all text-sm sm:text-base shadow-md hover:shadow-lg"
+                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all text-sm sm:text-base w-full sm:w-auto"
                     >
                       <FaTrash className="h-4 w-4" />
                     </button>
