@@ -21,9 +21,22 @@ export default function AdminPanel() {
   const [filterDate, setFilterDate] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [studentName, setStudentName] = useState('');
+  const [studentGroup, setStudentGroup] = useState('GENERAL MEMBER');
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentSearchResults, setStudentSearchResults] = useState([]);
+  const [groupFilter, setGroupFilter] = useState('ALL');
+  
+  const groups = [
+    'DISCIPLINE COMMITTEE',
+    'TECH TEAM',
+    'PR TEAM',
+    'DESIGN TEAM',
+    'CONTENT TEAM',
+    'CULTURAL TEAM',
+    'OFFICE BEARERS',
+    'GENERAL MEMBER'
+  ];
   const router = useRouter();
 
   useEffect(() => {
@@ -78,7 +91,12 @@ export default function AdminPanel() {
       const list = [];
       snap.forEach(d => {
         const data = d.data();
-        list.push({ id: d.id, name: data.name, nameLower: (data.nameLower || (data.name || '').toLowerCase()) });
+        list.push({ 
+          id: d.id, 
+          name: data.name, 
+          nameLower: (data.nameLower || (data.name || '').toLowerCase()),
+          group: data.group || 'GENERAL MEMBER'
+        });
       });
       setStudents(list);
     } catch (e) {
@@ -94,11 +112,20 @@ export default function AdminPanel() {
       alert('Student with the same name already exists.');
       return;
     }
+    if (!studentGroup) {
+      alert('Please select a group for the student');
+      return;
+    }
     try {
       const nameLower = name.toLowerCase();
-      const ref = await addDoc(collection(db, 'students'), { name, nameLower });
-      setStudents([{ id: ref.id, name, nameLower }, ...students]);
+      const ref = await addDoc(collection(db, 'students'), { 
+        name, 
+        nameLower, 
+        group: studentGroup 
+      });
+      setStudents([{ id: ref.id, name, nameLower, group: studentGroup }, ...students]);
       setStudentName('');
+      setStudentGroup('GENERAL MEMBER');
     } catch (e) {
       console.error('Error adding student', e);
       alert('Failed to add student');
@@ -276,50 +303,79 @@ export default function AdminPanel() {
               </div>
             )}
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <input
-              type="text"
-              value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
-              placeholder="Enter student name"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
-            />
-            <button
-              onClick={addStudentToDb}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm sm:text-base"
-            >
-              Add Student
-            </button>
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                placeholder="Enter student name"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+              />
+              <select
+                value={studentGroup}
+                onChange={(e) => setStudentGroup(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+              >
+                {groups.map(group => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
+              </select>
+              <button
+                onClick={addStudentToDb}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm sm:text-base whitespace-nowrap"
+              >
+                Add Student
+              </button>
+            </div>
           </div>
           {students.length === 0 ? (
             <p className="text-gray-600 text-sm">No students added yet.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {(studentSearch ? studentSearchResults : students).map((s) => (
-                <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <span className="block text-sm font-medium text-gray-800">{s.name}</span>
-                    <span className="block text-xs text-gray-500 mt-1">
-                      {(() => {
-                        const stat = studentStatsMap.get(s.nameLower);
-                        if (!stat || stat.total === 0) {
-                          return 'No attendance records yet';
-                        }
-                        const percent = Math.round((stat.present / stat.total) * 100);
-                        return `Attendance: ${percent}% (${stat.present}/${stat.total} present)`;
-                      })()}
-                    </span>
+            <>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Group</label>
+                <select
+                  value={groupFilter}
+                  onChange={(e) => setGroupFilter(e.target.value)}
+                  className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
+                >
+                  <option value="ALL">All Groups</option>
+                  {groups.map(group => (
+                    <option key={group} value={group}>{group}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {(studentSearch ? studentSearchResults : students)
+                .filter(s => groupFilter === 'ALL' || s.group === groupFilter)
+                .map((s) => (
+                  <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border-l-4 border-indigo-200">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                      <div className="text-xs text-gray-500">{s.group}</div>
+                      <span className="block text-xs text-gray-500 mt-1">
+                        {(() => {
+                          const stat = studentStatsMap.get(s.nameLower);
+                          if (!stat || stat.total === 0) {
+                            return 'No attendance records yet';
+                          }
+                          const percent = Math.round((stat.present / stat.total) * 100);
+                          return `Attendance: ${percent}% (${stat.present}/${stat.total} present)`;
+                        })()}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => deleteStudentFromDb(s.id)}
+                      className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                    >
+                      <FaTimesCircle className="h-4 w-4" />
+                      Remove
+                    </button>
                   </div>
-                  <button
-                    onClick={() => deleteStudentFromDb(s.id)}
-                    className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
-                  >
-                    <FaTimesCircle className="h-4 w-4" />
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
         {/* Filter and Refresh */}
