@@ -35,7 +35,8 @@ export default function AdminPanel() {
     'CONTENT TEAM',
     'CULTURAL TEAM',
     'OFFICE BEARERS',
-    'GENERAL MEMBER'
+    'GENERAL MEMBER',
+    'FINANCE COMMITTEE'
   ];
   const router = useRouter();
 
