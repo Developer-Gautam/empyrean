@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../../contexts/AuthContext';
 import { FaUser, FaLock, FaSignInAlt, FaShieldAlt } from 'react-icons/fa';
 
 export default function AdminLogin() {
@@ -11,15 +12,17 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const { isAuthenticated, login: authLogin } = useAuth();
   const router = useRouter();
 
   // Redirect if already authenticated
   useEffect(() => {
-    const authStatus = sessionStorage.getItem('adminAuthenticated');
-    if (authStatus === 'true') {
+    console.log('Login Page: isAuthenticated:', isAuthenticated);
+    if (isAuthenticated) {
+      console.log('Login Page: Redirecting to admin');
       router.push('/admin');
     }
-  }, [router]);
+  }, [isAuthenticated, router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -32,34 +35,15 @@ export default function AdminLogin() {
 
     setIsLoading(true);
     try {
-      // Check admin credentials in Firestore
-      const adminRef = collection(db, 'admins');
-      const q = query(adminRef, where('username', '==', username.trim()));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        setError('Invalid username or password');
-        setIsLoading(false);
-        return;
-      }
-
-      let adminFound = false;
-      querySnapshot.forEach((doc) => {
-        const adminData = doc.data();
-        if (adminData.password === password) {
-          adminFound = true;
-          // Store admin session in localStorage
-          sessionStorage.setItem('adminAuthenticated', 'true');
-          sessionStorage.setItem('adminUsername', username.trim());
-          router.push('/admin');
-        }
-      });
-
-      if (!adminFound) {
-        setError('Invalid username or password');
+      const result = await authLogin(username, password);
+      
+      if (result.success) {
+        router.push('/admin');
+      } else {
+        setError(result.error);
       }
     } catch (error) {
-      console.error('Error during login:', error);
+      console.error('Login error:', error);
       setError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
