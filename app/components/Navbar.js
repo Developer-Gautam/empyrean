@@ -3,23 +3,15 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { FaBars, FaTimes, FaUserShield, FaChartBar, FaHome, FaSignOutAlt } from 'react-icons/fa';
+import { usePathname } from 'next/navigation';
+import { FaBars, FaTimes, FaUserShield, FaHome, FaSignOutAlt } from 'react-icons/fa';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const pathname = usePathname();
-
-  useEffect(() => {
-    setIsClient(true);
-    const authStatus = sessionStorage.getItem('adminAuthenticated') === 'true';
-    setIsAuthenticated(authStatus);
-  }, []);
 
   useEffect(() => {
     const updateAuth = () => {
@@ -74,7 +66,7 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-2">
-            {isClient && isAuthenticated ? (
+            {isAuthenticated ? (
               <>
                 <Link
                   href="/"
@@ -132,7 +124,7 @@ export default function Navbar() {
         {/* Mobile Navigation */}
         {open && (
           <div className="lg:hidden border-t border-gray-200 py-4 space-y-2">
-            {isClient && isAuthenticated ? (
+            {isAuthenticated ? (
               <>
                 <Link
                   href="/"
