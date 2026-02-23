@@ -5,17 +5,23 @@ import { collection, getDocs, query, orderBy, deleteDoc, doc, addDoc, onSnapshot
 import { db } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import DeleteConfirmation from '../components/DeleteConfirmation';
 import {
   FaTrash,
   FaSync,
   FaCalendarAlt,
   FaUsers,
-  FaCheckCircle,
-  FaTimesCircle,
-  FaChartBar,
+  FaPlus,
+  FaSearch,
   FaFilter,
-  FaSignOutAlt,
-  FaTimes
+  FaTimes,
+  FaTimesCircle,
+  FaCheckCircle,
+  FaChartBar,
+  FaClock,
+  FaChevronDown,
+  FaChevronUp,
+  FaSignOutAlt
 } from 'react-icons/fa';
 
 export default function AdminPanel() {
@@ -30,7 +36,15 @@ export default function AdminPanel() {
   const [searchInputValue, setSearchInputValue] = useState(''); // Add separate state for input
   const [groupFilter, setGroupFilter] = useState('ALL');
   const [showStudentModal, setShowStudentModal] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [expandedEvent, setExpandedEvent] = useState(null);
+  
+  // Delete confirmation state
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    item: null,
+    type: 'student', // 'student' or 'record'
+    onConfirm: null
+  });
   
   const { isAuthenticated, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -131,14 +145,12 @@ export default function AdminPanel() {
   };
 
   const deleteRecord = async (id) => {
-    if (confirm('Are you sure you want to delete this record?')) {
-      try {
-        await deleteDoc(doc(db, 'attendance', id));
-        setAttendanceRecords(attendanceRecords.filter(record => record.id !== id));
-      } catch (error) {
-        console.error('Error deleting record:', error);
-        alert('Error deleting record');
-      }
+    try {
+      await deleteDoc(doc(db, 'attendance', id));
+      setAttendanceRecords(attendanceRecords.filter(record => record.id !== id));
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      alert('Error deleting record');
     }
   };
 
@@ -296,32 +308,27 @@ export default function AdminPanel() {
     router.push('/');
   };
 
+  // Helper functions for delete confirmation
+  const openDeleteModal = (item, type, onConfirm) => {
+    setDeleteModal({
+      isOpen: true,
+      item,
+      type,
+      onConfirm
+    });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({
+      isOpen: false,
+      item: null,
+      type: 'student',
+      onConfirm: null
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50">
-      {/* Mobile App Header */}
-      <div className="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-40">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <FaUsers className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-800">Admin Panel</h1>
-                <div className="text-xs text-gray-500">Real-time Management</div>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-xl font-medium hover:bg-red-600 transition-all transform hover:scale-105 shadow-lg flex items-center gap-2"
-            >
-              <FaSignOutAlt className="h-4 w-4" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="px-4 py-4 sm:px-6 lg:px-8">
         {/* Mobile App Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -484,268 +491,198 @@ export default function AdminPanel() {
             </div>
           </div>
 
-          {/* Students List - Similar to Records List */}
-          {students.length === 0 ? (
+          {/* Events List - Click to Show Students */}
+          {attendanceRecords.length === 0 ? (
             <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-              <FaUsers className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg">No students found</p>
-              <p className="text-gray-500 text-sm mt-2">Add your first student to get started</p>
+              <FaCalendarAlt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">No attendance events found</p>
+              <p className="text-gray-500 text-sm mt-2">Mark attendance to see events here</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {(studentSearch ? studentSearchResults : students)
-                .filter(s => groupFilter === 'ALL' || s.groups.includes(groupFilter))
-                .map((student) => {
-                  const stat = studentStatsMap.get(student.nameLower);
-                  const attendancePercentage = (stat && stat.total > 0) 
-                    ? Math.round((stat.present / stat.total) * 100) 
-                    : 0;
-                  
-                  return (
-                    <div key={student.id} className="bg-white rounded-xl shadow-lg p-4 sm:p-6 hover:shadow-xl transition-shadow border border-gray-100">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4">
-                        <div className="mb-4 sm:mb-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <FaUsers className="h-5 w-5 text-indigo-600" />
+              {attendanceRecords.map((record) => {
+                const presentStudents = record.students?.filter(s => s.status === 'present') || [];
+                const absentStudents = record.students?.filter(s => s.status === 'absent') || [];
+                const totalStudents = record.students?.length || 0;
+                const attendancePercentage = totalStudents > 0 ? Math.round((presentStudents.length / totalStudents) * 100) : 0;
+                
+                return (
+                  <div key={record.id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow border border-gray-100">
+                    {/* Event Header - Clickable */}
+                    <div 
+                      onClick={() => setExpandedEvent(expandedEvent === record.id ? null : record.id)}
+                      className="p-4 sm:p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-3">
+                            <FaCalendarAlt className="h-5 w-5 text-indigo-600" />
                             <h3 className="text-xl font-semibold text-gray-800">
-                              {student.name}
+                              {record.title || 'Untitled Event'}
                             </h3>
                           </div>
-                          <p className="text-gray-600 text-sm sm:text-base mb-1 flex items-center gap-2">
-                            <span className="font-medium">Teams:</span> 
-                            {student.groups.length === 1 ? (
-                              <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-lg text-sm">
-                                {student.groups[0]}
-                              </span>
-                            ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {student.groups.slice(0, 3).map((group, index) => (
-                                  <span key={index} className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-lg text-sm">
-                                    {group}
-                                  </span>
-                                ))}
-                                {student.groups.length > 3 && (
-                                  <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-lg text-sm">
-                                    +{student.groups.length - 3} more
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </p>
-                          <p className="text-gray-600 text-sm sm:text-base flex items-center gap-2">
-                            <span className="font-medium">Added:</span>{' '}
-                            {new Date().toLocaleString()}
-                          </p>
+                          <div className="flex flex-wrap gap-4 text-sm">
+                            <span className="flex items-center gap-1 text-gray-600">
+                              <FaClock className="h-4 w-4" />
+                              {record.date}
+                            </span>
+                            <span className="flex items-center gap-1 text-gray-600">
+                              <FaUsers className="h-4 w-4" />
+                              {totalStudents} students
+                            </span>
+                            <span className="flex items-center gap-1 text-green-600 font-medium">
+                              <FaCheckCircle className="h-4 w-4" />
+                              {presentStudents.length} present
+                            </span>
+                            <span className="flex items-center gap-1 text-red-600 font-medium">
+                              <FaTimesCircle className="h-4 w-4" />
+                              {absentStudents.length} absent
+                            </span>
+                            <span className="flex items-center gap-1 text-blue-600 font-medium">
+                              <FaChartBar className="h-4 w-4" />
+                              {attendancePercentage}%
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
                           <button
-                            onClick={() => setDeleteConfirm(student)}
-                            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm sm:text-base whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDeleteModal(record, 'record', () => deleteRecord(record.id));
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
                           >
                             <FaTrash className="h-4 w-4" />
                             Delete
                           </button>
+                          <div className="text-gray-400">
+                            {expandedEvent === record.id ? (
+                              <FaChevronUp className="h-5 w-5" />
+                            ) : (
+                              <FaChevronDown className="h-5 w-5" />
+                            )}
+                          </div>
                         </div>
                       </div>
+                    </div>
 
-                      <div className="flex flex-wrap gap-4 mb-4 text-sm">
-                        <span className="flex items-center gap-1 text-green-600 font-medium">
-                          <FaCheckCircle className="h-4 w-4" />
-                          Present: {stat?.present || 0}
-                        </span>
-                        <span className="flex items-center gap-1 text-red-600 font-medium">
-                          <FaTimesCircle className="h-4 w-4" />
-                          Absent: {(stat?.total || 0) - (stat?.present || 0)}
-                        </span>
-                        <span className="flex items-center gap-1 text-gray-600 font-medium">
-                          <FaChartBar className="h-4 w-4" />
-                          Attendance: {attendancePercentage}%
-                        </span>
-                        <span className="flex items-center gap-1 text-blue-600 font-medium">
-                          <FaCalendarAlt className="h-4 w-4" />
-                          Total Events: {stat?.total || 0}
-                        </span>
-                      </div>
+                    {/* Expanded Student Details */}
+                    {expandedEvent === record.id && (
+                      <div className="border-t border-gray-200 bg-gray-50 p-4 sm:p-6">
+                        <div className="space-y-6">
+                          {/* Present Students */}
+                          {presentStudents.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                                <FaCheckCircle className="h-5 w-5" />
+                                Present Students ({presentStudents.length})
+                              </h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {presentStudents.map((student, index) => {
+                                  const studentInfo = students.find(s => 
+                                    s.name.toLowerCase() === student.name.toLowerCase()
+                                  );
+                                  return (
+                                    <div key={index} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                      <div className="font-medium text-green-800">{student.name}</div>
+                                      {studentInfo && (
+                                        <div className="text-xs text-green-600 mt-1">
+                                          {studentInfo.groups.length === 1 ? (
+                                            studentInfo.groups[0]
+                                          ) : (
+                                            `${studentInfo.groups.length} teams`
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
-                      <div className="border-t pt-4">
-                        <h4 className="font-medium text-gray-700 mb-3 text-sm sm:text-base flex items-center gap-2">
-                          <FaCalendarAlt className="h-4 w-4" />
-                          Recent Attendance Records:
-                        </h4>
-                        {stat && stat.total > 0 ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {attendanceRecords
-                              .filter(record => 
-                                record.students?.some(s => 
-                                  s.name.toLowerCase() === student.name.toLowerCase()
-                                )
-                              )
-                              .slice(0, 6)
-                              .map((record) => {
-                                const studentRecord = record.students?.find(s => 
-                                  s.name.toLowerCase() === student.name.toLowerCase()
-                                );
+                          {/* Absent Students */}
+                          {absentStudents.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+                                <FaTimesCircle className="h-5 w-5" />
+                                Absent Students ({absentStudents.length})
+                              </h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {absentStudents.map((student, index) => {
+                                  const studentInfo = students.find(s => 
+                                    s.name.toLowerCase() === student.name.toLowerCase()
+                                  );
+                                  return (
+                                    <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                      <div className="font-medium text-red-800">{student.name}</div>
+                                      {studentInfo && (
+                                        <div className="text-xs text-red-600 mt-1">
+                                          {studentInfo.groups.length === 1 ? (
+                                            studentInfo.groups[0]
+                                          ) : (
+                                            `${studentInfo.groups.length} teams`
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Group Summary */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200">
+                            <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                              <FaUsers className="h-5 w-5" />
+                              Team Summary
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {groups.map(group => {
+                                const groupPresent = presentStudents.filter(student => {
+                                  const studentInfo = students.find(s => 
+                                    s.name.toLowerCase() === student.name.toLowerCase()
+                                  );
+                                  return studentInfo?.groups.includes(group);
+                                });
+                                const groupAbsent = absentStudents.filter(student => {
+                                  const studentInfo = students.find(s => 
+                                    s.name.toLowerCase() === student.name.toLowerCase()
+                                  );
+                                  return studentInfo?.groups.includes(group);
+                                });
+                                const groupTotal = groupPresent.length + groupAbsent.length;
+                                const groupPercentage = groupTotal > 0 ? Math.round((groupPresent.length / groupTotal) * 100) : 0;
+                                
                                 return (
-                                  <div
-                                    key={record.id}
-                                    className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
-                                      studentRecord?.status === 'present'
-                                        ? 'bg-green-50 text-green-800 border border-green-200'
-                                        : 'bg-red-50 text-red-800 border border-red-200'
-                                    }`}
-                                  >
-                                    {studentRecord?.status === 'present' ? (
-                                      <FaCheckCircle className="h-4 w-4 flex-shrink-0" />
-                                    ) : (
-                                      <FaTimesCircle className="h-4 w-4 flex-shrink-0" />
-                                    )}
-                                    <div className="flex-1">
-                                      <div className="font-medium">{record.title || 'Untitled Event'}</div>
-                                      <div className="text-xs opacity-75">{record.date}</div>
+                                  <div key={group} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                    <div className="font-medium text-gray-800">{group}</div>
+                                    <div className="text-sm text-gray-600 mt-1">
+                                      {groupPresent.length}/{groupTotal} present ({groupPercentage}%)
+                                    </div>
+                                    <div className="flex gap-2 mt-2">
+                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                        +{groupPresent.length}
+                                      </span>
+                                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                                        -{groupAbsent.length}
+                                      </span>
                                     </div>
                                   </div>
                                 );
                               })}
+                            </div>
                           </div>
-                        ) : (
-                          <div className="text-center py-4 bg-gray-50 rounded-lg">
-                            <p className="text-gray-500 text-sm">No attendance records yet</p>
-                          </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
-
-        </div>
-        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <FaFilter className="h-4 w-4" />
-                Filter by Date
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="date"
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base"
-                />
-                {filterDate && (
-                  <button
-                    onClick={() => setFilterDate('')}
-                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-medium text-sm sm:text-base"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={fetchAttendanceRecords}
-                disabled={adminLoading}
-                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm sm:text-base disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                <FaSync className={`h-4 w-4 ${adminLoading ? 'animate-spin' : ''}`} />
-                {adminLoading ? 'Loading...' : 'Refresh'}
-              </button>
-            </div>
           </div>
-        </div>
-
-        {/* Records List */}
-        {adminLoading ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <p className="text-gray-600 mt-4">Loading records...</p>
-          </div>
-        ) : filteredRecords.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <FaUsers className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg">No attendance records found</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredRecords.map((record) => {
-              const presentCount = record.students?.filter(s => s.status === 'present').length || 0;
-              const absentCount = record.students?.filter(s => s.status === 'absent').length || 0;
-              
-              return (
-                <div key={record.id} className="bg-white rounded-xl shadow-lg p-4 sm:p-6 hover:shadow-xl transition-shadow border border-gray-100">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4">
-                    <div className="mb-4 sm:mb-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <FaCalendarAlt className="h-5 w-5 text-indigo-600" />
-                        <h3 className="text-xl font-semibold text-gray-800">
-                          {record.title || 'Untitled Event'}
-                        </h3>
-                      </div>
-                      <p className="text-gray-600 text-sm sm:text-base mb-1 flex items-center gap-2">
-                        <span className="font-medium">Date:</span> {record.date}
-                      </p>
-                      <p className="text-gray-600 text-sm sm:text-base flex items-center gap-2">
-                        <span className="font-medium">Created:</span>{' '}
-                        {new Date(record.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => deleteRecord(record.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm sm:text-base whitespace-nowrap"
-                    >
-                      <FaTrash className="h-4 w-4" />
-                      Delete
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-4 mb-4 text-sm">
-                    <span className="flex items-center gap-1 text-green-600 font-medium">
-                      <FaCheckCircle className="h-4 w-4" />
-                      Present: {presentCount}
-                    </span>
-                    <span className="flex items-center gap-1 text-red-600 font-medium">
-                      <FaTimesCircle className="h-4 w-4" />
-                      Absent: {absentCount}
-                    </span>
-                    <span className="flex items-center gap-1 text-gray-600 font-medium">
-                      <FaUsers className="h-4 w-4" />
-                      Total: {record.students?.length || 0}
-                    </span>
-                  </div>
-
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium text-gray-700 mb-3 text-sm sm:text-base flex items-center gap-2">
-                      <FaUsers className="h-4 w-4" />
-                      Students:
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {record.students?.map((student, index) => (
-                        <div
-                          key={index}
-                          className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
-                            student.status === 'present'
-                              ? 'bg-green-50 text-green-800 border border-green-200'
-                              : 'bg-red-50 text-red-800 border border-red-200'
-                          }`}
-                        >
-                          {student.status === 'present' ? (
-                            <FaCheckCircle className="h-4 w-4 flex-shrink-0" />
-                          ) : (
-                            <FaTimesCircle className="h-4 w-4 flex-shrink-0" />
-                          )}
-                          <span className="font-medium">{student.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Student Management Modal */}
@@ -919,7 +856,7 @@ export default function AdminPanel() {
                               </div>
                             </div>
                             <button
-                              onClick={() => setDeleteConfirm(s)}
+                              onClick={() => openDeleteModal(s, 'student', () => deleteStudentFromDb(s.id))}
                               className="w-6 h-6 bg-red-100 rounded-lg flex items-center justify-center hover:bg-red-200 transition-colors"
                               title="Remove student"
                             >
@@ -947,43 +884,19 @@ export default function AdminPanel() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm mx-auto p-6 transform transition-all duration-300">
-            <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-6">
-                <FaTimesCircle className="h-8 w-8 text-red-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Remove Student</h3>
-              <div className="bg-red-50 rounded-2xl p-4 mb-6">
-                <p className="text-gray-700 font-medium">
-                  Are you sure you want to remove 
-                  <span className="font-bold text-red-600 text-lg"> {deleteConfirm.name} </span>
-                  from student list?
-                </p>
-                <p className="text-xs text-gray-500 mt-2">⚠️ This action cannot be undone</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    deleteStudentFromDb(deleteConfirm.id);
-                    setDeleteConfirm(null);
-                  }}
-                  className="flex-1 bg-red-600 text-white rounded-2xl py-3 font-bold hover:bg-red-700 transition-all transform hover:scale-105 shadow-lg"
-                >
-                  Yes, Remove
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 bg-gray-200 text-gray-700 rounded-2xl py-3 font-bold hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteConfirmation
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={deleteModal.onConfirm}
+        title={deleteModal.type === 'student' ? 'Remove Student' : 'Delete Record'}
+        itemName={deleteModal.item?.name || deleteModal.item?.title || 'this item'}
+        description={deleteModal.type === 'student' 
+          ? `Are you sure you want to remove ${deleteModal.item?.name} from student list?`
+          : `Are you sure you want to delete the attendance record "${deleteModal.item?.title || 'Untitled Event'}"?`
+        }
+        confirmText={deleteModal.type === 'student' ? 'Yes, Remove' : 'Yes, Delete'}
+        cancelText="Cancel"
+      />
     </div>
   );
 }

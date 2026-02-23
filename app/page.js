@@ -5,6 +5,7 @@ import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import DeleteConfirmation from './components/DeleteConfirmation';
 import { 
   FaCalendarAlt, 
   FaUsers, 
@@ -38,6 +39,7 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [students, setStudents] = useState([]);
+  const [selectedTeams, setSelectedTeams] = useState([]);
   const [groups, setGroups] = useState({
     'DISCIPLINE COMMITTEE': [],
     'TECH TEAM': [],
@@ -51,6 +53,11 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    item: null,
+    onConfirm: null
+  });
 
   // -------------------- Effects --------------------
   useEffect(() => {
@@ -126,15 +133,27 @@ export default function Home() {
       return;
     }
     
+    if (selectedTeams.length === 0) {
+      alert('Please select at least one team to load students');
+      return;
+    }
+    
     setLoadingStudents(true);
     try {
       const snap = await getDocs(collection(db, 'students'));
-      const fetched = snap.docs.map((d) => ({
-        id: d.id,
-        name: d.data().name,
-        group: d.data().group || 'GENERAL MEMBER',
-        status: null
-      }));
+      const fetched = snap.docs
+        .map((d) => ({
+          id: d.id,
+          name: d.data().name,
+          group: d.data().group || 'GENERAL MEMBER',
+          groups: d.data().groups || [d.data().group || 'GENERAL MEMBER'],
+          status: null
+        }))
+        .filter(student => {
+          // Check if student belongs to any selected team
+          return student.groups.some(team => selectedTeams.includes(team));
+        });
+      
       setStudents(fetched);
       setGroups(groupStudents(fetched));
     } catch (err) {
@@ -146,14 +165,29 @@ export default function Home() {
   };
 
   // -------------------- Mutations (Admin Only) --------------------
+  const openDeleteModal = (student, onConfirm) => {
+    setDeleteModal({
+      isOpen: true,
+      item: student,
+      onConfirm
+    });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({
+      isOpen: false,
+      item: null,
+      onConfirm: null
+    });
+  };
+
   const removeStudent = (id) => {
     if (!isAuthenticated) {
       alert('Please login as admin to access this feature');
       return;
     }
-    const updated = students.filter((s) => s.id !== id);
-    setStudents(updated);
-    setGroups(groupStudents(updated));
+    setStudents(students.filter(s => s.id !== id));
+    setGroups(groupStudents(students.filter(s => s.id !== id)));
   };
 
   const setStudentStatus = (id, status) => {
@@ -181,8 +215,12 @@ export default function Home() {
       alert('Please load at least one student');
       return;
     }
-    if (students.some((s) => !s.status)) {
-      alert('Please mark every student present/absent.');
+
+    // Only save students that have been marked (status is not null)
+    const markedStudents = students.filter(s => s.status !== null);
+    
+    if (markedStudents.length === 0) {
+      alert('Please mark at least one student as present or absent');
       return;
     }
 
@@ -192,7 +230,8 @@ export default function Home() {
       await addDoc(collection(db, 'attendance'), {
         date: selectedDate,
         title: eventTitle.trim(),
-        students,
+        students: markedStudents,
+        selectedTeams: selectedTeams, // Save which teams this event was for
         createdAt: new Date().toISOString()
       });
       setSaved(true);
@@ -201,6 +240,7 @@ export default function Home() {
       setEventTitle('');
       setStudents([]);
       setGroups(groupStudents([]));
+      setSelectedTeams([]); // Reset team selection
       // Refresh public stats
       fetchPublicStats();
     } catch (err) {
@@ -497,12 +537,53 @@ export default function Home() {
                 <FaUsers className="h-5 w-5 text-indigo-600" />
                 Attendance Roster
               </h2>
+              
+              {/* Team Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <FaUsers className="h-4 w-4 text-indigo-600" />
+                  Select Teams for Event
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {Object.keys(groups).map((team) => (
+                    <label key={team} className="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 p-2 rounded-lg transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selectedTeams.includes(team)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTeams([...selectedTeams, team]);
+                          } else {
+                            setSelectedTeams(selectedTeams.filter(t => t !== team));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs font-medium text-gray-700 truncate">{team}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedTeams.length > 0 && (
+                  <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <button
+                      onClick={() => setSelectedTeams([])}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Clear Selection
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      ({selectedTeams.length} team{selectedTeams.length > 1 ? 's' : ''} selected)
+                    </span>
+                  </div>
+                )}
+              </div>
+              
               <p className="text-sm text-gray-600 mb-3">
-                Load the official student list from the database, then mark each student as present or absent.
+                Select team(s) above, then load students to mark attendance for specific teams only.
               </p>
               <button
                 onClick={loadAllStudentsFromDb}
-                disabled={loadingStudents}
+                disabled={loadingStudents || selectedTeams.length === 0}
                 className="flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-lg hover:from-sky-700 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50"
               >
                 {loadingStudents ? (
@@ -511,7 +592,7 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <FaUsers className="h-4 w-4" /> Load Students
+                    <FaUsers className="h-4 w-4" /> Load Selected Team Students
                   </>
                 )}
               </button>
@@ -549,17 +630,27 @@ export default function Home() {
 
             {/* Students */}
             {students.length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-100 hover:shadow-xl transition-shadow">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-                  <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                    <FaUsers className="h-5 w-5 text-indigo-600" /> Students ({students.length})
-                  </h2>
-                  <div className="flex flex-wrap gap-3 text-sm">
-                    <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-3 py-1 rounded-lg">
-                      <FaCheckCircle className="h-4 w-4" /> Present: {presentCount}
+              <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6 border border-gray-100 hover:shadow-xl transition-shadow">
+                <div className="flex flex-col gap-3 mb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2 mb-2">
+                      <FaUsers className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" /> Students ({students.length})
+                    </h2>
+                    <div className="text-xs sm:text-sm text-gray-600">
+                      {selectedTeams.length > 0 && (
+                        <span className="break-words">From: {selectedTeams.join(', ')}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+                    <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-2 py-1 rounded-lg">
+                      <FaCheckCircle className="h-3 w-3 sm:h-4 sm:w-4" /> Present: {presentCount}
                     </span>
-                    <span className="flex items-center gap-1 text-red-600 font-medium bg-red-50 px-3 py-1 rounded-lg">
-                      <FaTimesCircle className="h-4 w-4" /> Absent: {absentCount}
+                    <span className="flex items-center gap-1 text-red-600 font-medium bg-red-50 px-2 py-1 rounded-lg">
+                      <FaTimesCircle className="h-3 w-3 sm:h-4 sm:w-4" /> Absent: {absentCount}
+                    </span>
+                    <span className="flex items-center gap-1 text-gray-600 font-medium bg-gray-50 px-2 py-1 rounded-lg">
+                      <FaUsers className="h-3 w-3 sm:h-4 sm:w-4" /> Unmarked: {students.filter(s => !s.status).length}
                     </span>
                   </div>
                 </div>
@@ -572,15 +663,17 @@ export default function Home() {
                           {gName} ({gStudents.length} members)
                         </h3>
                         {gStudents.map((s) => (
-                          <div key={s.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-2xl shadow-sm border ml-4">
-                            <div className="flex items-center gap-3 w-full">
-                              {s.status === 'present' ? <FaCheckCircle className="h-5 w-5 text-green-500" /> : s.status === 'absent' ? <FaTimesCircle className="h-5 w-5 text-red-500" /> : <FaUsers className="h-5 w-5 text-gray-400" />}
-                              <span className="text-gray-800 font-medium text-sm sm:text-base">{s.name}</span>
+                          <div key={s.id} className="flex items-center justify-between gap-3 p-4 bg-white rounded-xl shadow-sm border ml-1 sm:ml-4">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              {s.status === 'present' ? <FaCheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" /> : s.status === 'absent' ? <FaTimesCircle className="h-4 w-4 text-red-500 flex-shrink-0" /> : <FaUsers className="h-4 w-4 text-gray-400 flex-shrink-0" />}
+                              <span className="text-gray-800 font-medium text-sm truncate">{s.name}</span>
                             </div>
-                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                              <button onClick={() => setStudentStatus(s.id, 'present')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${s.status==='present' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700'}`}>Present</button>
-                              <button onClick={() => setStudentStatus(s.id, 'absent')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${s.status==='absent' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700'}`}>Absent</button>
-                              <button onClick={() => removeStudent(s.id)} className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm"><FaTrash /></button>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <button onClick={() => setStudentStatus(s.id, 'present')} className={`px-3 py-2 rounded-lg text-sm font-medium min-w-[44px] ${s.status==='present' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700'}`}>✓</button>
+                              <button onClick={() => setStudentStatus(s.id, 'absent')} className={`px-3 py-2 rounded-lg text-sm font-medium min-w-[44px] ${s.status==='absent' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700'}`}>✗</button>
+                              <button onClick={() => openDeleteModal(s, () => removeStudent(s.id))} className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm min-w-[44px]">
+                                <FaTrash className="h-3 w-3" />
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -594,10 +687,15 @@ export default function Home() {
             {/* Save Button */}
             {students.length > 0 && (
               <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-100">
+                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-blue-700 text-sm">
+                    💡 <strong>Tip:</strong> You can save attendance even if some students are unmarked. Only marked students will be recorded.
+                  </p>
+                </div>
                 <button
                   onClick={saveToFirestore}
-                  disabled={isSaving || !selectedDate || !eventTitle.trim() || students.length === 0 || students.some((s) => !s.status)}
-                  className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold text-white transition-all text-sm shadow-lg ${isSaving || !selectedDate || !eventTitle.trim() || students.length === 0 || students.some((s) => !s.status) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'}`}
+                  disabled={isSaving || !selectedDate || !eventTitle.trim() || students.length === 0}
+                  className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold text-white transition-all text-sm shadow-lg ${isSaving || !selectedDate || !eventTitle.trim() || students.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'}`}
                 >
                   {isSaving ? <><FaSpinner className="h-5 w-5 animate-spin" /> Saving...</> : <><FaSave className="h-5 w-5" /> Save Attendance</>}
                 </button>
@@ -647,6 +745,18 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmation
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={deleteModal.onConfirm}
+        title="Remove Student"
+        itemName={deleteModal.item?.name || 'this student'}
+        description={`Are you sure you want to remove ${deleteModal.item?.name || 'this student'} from the attendance list?`}
+        confirmText="Yes, Remove"
+        cancelText="Cancel"
+      />
 
       <style jsx>{`
         @keyframes fade-in {
